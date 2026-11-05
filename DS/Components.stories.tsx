@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { Button } from './Button'
+import { ErrorSummary } from './ErrorSummary'
 import {
   Alert,
   Box,
@@ -76,6 +77,29 @@ export const AlertError: Story = {
 export const AlertSuccess: Story = {
   name: 'Alert / success',
   render: () => <Alert severity="success">Application saved.</Alert>,
+}
+export const ErrorSummaryFields: Story = {
+  name: 'ErrorSummary',
+  render: () => (
+    <Stack spacing={2}>
+      <ErrorSummary
+        message="We could not save your details."
+        items={[
+          {
+            fieldId: 'story-email',
+            message: 'Enter your email address.',
+            onSelect: () => document.getElementById('story-email')?.focus(),
+          },
+        ]}
+      />
+      <TextField
+        error
+        helperText="Enter your email address."
+        id="story-email"
+        label="Email address"
+      />
+    </Stack>
+  ),
 }
 export const CardSurface: Story = {
   name: 'Card',

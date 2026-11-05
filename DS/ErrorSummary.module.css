@@ -1,0 +1,8 @@
+.summary {
+  display: grid;
+  gap: 8px;
+}
+.list {
+  margin: 0;
+  padding-left: 20px;
+}
