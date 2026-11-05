@@ -138,6 +138,8 @@ type TypographyProps = Omit<
     'display' | 'heading' | 'subheading' | 'body' | 'caption' | 'eyebrow'
   tone?: 'default' | 'muted' | 'accent'
   align?: 'left' | 'center' | 'right'
+  /** Lets callers move focus to the text, for example a page heading. */
+  ref?: Ref<HTMLElement>
 }
 const defaultElementTypes = {
   display: 'h1',
@@ -175,6 +177,8 @@ export function Typography({
 
 type AlertProps = Omit<ComponentPropsWithoutRef<'div'>, 'style'> & {
   severity?: 'error' | 'success' | 'info'
+  /** Lets callers move focus to the alert, for example an error summary. */
+  ref?: Ref<HTMLElement>
 }
 export function Alert({ severity = 'info', className, ...props }: AlertProps) {
   return (
