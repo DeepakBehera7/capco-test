@@ -1,4 +1,9 @@
-export const jsonApiMediaType = 'application/vnd.api+json'
+import {
+  fieldErrorsByPointer,
+  parseRetryAfter,
+  postJsonApi,
+  readJsonApiErrors,
+} from './-json-api'
 
 export const applicantAccountsPath = '/api/v1/applicant-accounts'
 
@@ -8,6 +13,12 @@ export interface ApplicantCredentials {
 }
 
 export type CredentialField = keyof ApplicantCredentials
+
+/** JSON pointers of the credential attributes, shared by sign-up and sign-in. */
+export const credentialPointers: Readonly<Record<string, CredentialField>> = {
+  '/data/attributes/email': 'email',
+  '/data/attributes/password': 'password',
+}
 
 /**
  * Outcome of a registration request. Transport and HTTP details stay in this
@@ -24,50 +35,37 @@ export type RegistrationResult =
   | { kind: 'network-error' }
   | { kind: 'unexpected' }
 
-interface JsonApiError {
-  status: string
-  code: string
-  detail: string
-  source?: { pointer: string }
-}
-
-const fieldPointers: Record<string, CredentialField> = {
-  '/data/attributes/email': 'email',
-  '/data/attributes/password': 'password',
-}
-
 /** Registers an Applicant account. Registration never signs the user in. */
 export async function createApplicantAccount(
   credentials: ApplicantCredentials,
 ): Promise<RegistrationResult> {
-  let response: Response
-  try {
-    response = await fetch(applicantAccountsPath, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {
-        Accept: jsonApiMediaType,
-        'Content-Type': jsonApiMediaType,
+  const response = await postJsonApi(applicantAccountsPath, {
+    data: {
+      type: 'applicant-accounts',
+      attributes: {
+        email: credentials.email,
+        password: credentials.password,
       },
-      body: JSON.stringify({
-        data: {
-          type: 'applicant-accounts',
-          attributes: {
-            email: credentials.email,
-            password: credentials.password,
-          },
-        },
-      }),
-    })
-  } catch {
+    },
+  })
+  if (response === undefined) {
     return { kind: 'network-error' }
   }
 
   switch (response.status) {
     case 201:
       return { kind: 'created' }
-    case 400:
-      return invalidResult(await readErrors(response))
+    case 400: {
+      const fieldErrors = fieldErrorsByPointer(
+        await readJsonApiErrors(response),
+        credentialPointers,
+      )
+      // A 400 without field pointers (for example a malformed document) is a
+      // client defect the applicant cannot correct, so it is unexpected.
+      return Object.keys(fieldErrors).length > 0
+        ? { kind: 'invalid', fieldErrors }
+        : { kind: 'unexpected' }
+    }
     case 409:
       return { kind: 'email-taken' }
     case 429:
@@ -78,61 +76,4 @@ export async function createApplicantAccount(
     default:
       return { kind: 'unexpected' }
   }
-}
-
-/**
- * Field errors are shown beside their inputs. A 400 without field pointers
- * (for example a malformed document) is a client defect, not something the
- * applicant can correct, so it is reported as unexpected.
- */
-function invalidResult(errors: JsonApiError[]): RegistrationResult {
-  const fieldErrors: Partial<Record<CredentialField, string>> = {}
-  for (const error of errors) {
-    const field = error.source ? fieldPointers[error.source.pointer] : undefined
-    if (field && fieldErrors[field] === undefined) {
-      fieldErrors[field] = error.detail
-    }
-  }
-  return Object.keys(fieldErrors).length > 0
-    ? { kind: 'invalid', fieldErrors }
-    : { kind: 'unexpected' }
-}
-
-async function readErrors(response: Response): Promise<JsonApiError[]> {
-  try {
-    const document: unknown = await response.json()
-    if (
-      typeof document === 'object' &&
-      document !== null &&
-      'errors' in document &&
-      Array.isArray(document.errors)
-    ) {
-      return document.errors.filter(isJsonApiError)
-    }
-  } catch {
-    // A body that is not JSON is handled the same way as one with no errors.
-  }
-  return []
-}
-
-function isJsonApiError(value: unknown): value is JsonApiError {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-  const error = value as Record<string, unknown>
-  const source = error.source as Record<string, unknown> | undefined
-  return (
-    typeof error.status === 'string' &&
-    typeof error.code === 'string' &&
-    typeof error.detail === 'string' &&
-    (source === undefined || typeof source.pointer === 'string')
-  )
-}
-
-function parseRetryAfter(header: string | null): number | undefined {
-  if (header === null || !/^\d+$/.test(header.trim())) {
-    return undefined
-  }
-  const seconds = Number(header)
-  return seconds >= 1 ? seconds : undefined
 }

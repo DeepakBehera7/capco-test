@@ -1,17 +1,14 @@
-import {
-  Alert,
-  Button,
-  Card,
-  CardContent,
-  Link,
-  Stack,
-  TextField,
-  Typography,
-} from '@kyc/ui'
+import { Alert, Button, Link, Stack, TextField, Typography } from '@kyc/ui'
 import { useMutation } from '@tanstack/react-query'
-import { useRef, useState, type ReactNode } from 'react'
+import { useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 
+import {
+  AccountAccessPage,
+  accountAccessMessages,
+  ErrorSummary,
+  rateLimitMessage,
+} from './-account-access-ui'
 import {
   createApplicantAccount,
   type RegistrationResult,
@@ -45,29 +42,13 @@ const fieldIds: Record<RegistrationField, string> = {
   confirmPassword: 'applicant-confirm-password',
 }
 
-const errorSummaryTitleId = 'registration-error-summary-title'
-
 export const registrationMessages = {
   emailTaken:
     'An account already exists for this email address. Sign in instead, or use a different email address.',
-  networkError:
-    'We could not reach the service. Check your connection and try again.',
+  networkError: accountAccessMessages.networkError,
   unexpected:
     'Something went wrong and your account was not created. Try again later.',
 } as const
-
-export function rateLimitMessage(retryAfterSeconds?: number): string {
-  if (retryAfterSeconds === undefined) {
-    return 'Too many attempts. Wait a few minutes, then try again.'
-  }
-  if (retryAfterSeconds < 60) {
-    const unit = retryAfterSeconds === 1 ? 'second' : 'seconds'
-    return `Too many attempts. Try again in ${retryAfterSeconds} ${unit}.`
-  }
-  const minutes = Math.ceil(retryAfterSeconds / 60)
-  const unit = minutes === 1 ? 'minute' : 'minutes'
-  return `Too many attempts. Try again in ${minutes} ${unit}.`
-}
 
 export function CreateAccountForm({
   onNavigate,
@@ -218,41 +199,15 @@ export function CreateAccountForm({
           </Typography>
         </Stack>
         {hasSummary ? (
-          <Alert
-            aria-labelledby={errorSummaryTitleId}
-            className={styles.errorSummary}
+          <ErrorSummary
+            items={summaryFields.map((field) => ({
+              fieldId: fieldIds[field],
+              message: fieldErrors[field] ?? '',
+              onSelect: () => focusField(field),
+            }))}
+            message={formError}
             ref={errorSummary}
-            severity="error"
-            tabIndex={-1}
-          >
-            <Typography
-              component="h2"
-              id={errorSummaryTitleId}
-              variant="subheading"
-            >
-              There is a problem
-            </Typography>
-            {formError === undefined ? null : (
-              <Typography>{formError}</Typography>
-            )}
-            {summaryFields.length > 0 ? (
-              <ul className={styles.errorList}>
-                {summaryFields.map((field) => (
-                  <li key={field}>
-                    <Link
-                      href={`#${fieldIds[field]}`}
-                      onClick={(event) => {
-                        event.preventDefault()
-                        focusField(field)
-                      }}
-                    >
-                      {fieldErrors[field]}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </Alert>
+          />
         ) : null}
         <TextField
           autoComplete="email"
@@ -316,15 +271,5 @@ export function CreateAccountForm({
         </Typography>
       </Stack>
     </AccountAccessPage>
-  )
-}
-
-function AccountAccessPage({ children }: { children: ReactNode }) {
-  return (
-    <main className={styles.page}>
-      <Card className={styles.card}>
-        <CardContent className={styles.cardContent}>{children}</CardContent>
-      </Card>
-    </main>
   )
 }
