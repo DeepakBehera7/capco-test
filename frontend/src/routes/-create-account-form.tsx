@@ -8,8 +8,23 @@ import {
   TextField,
   Typography,
 } from '@kyc/ui'
-import { useEffect, useRef, useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
+import { useRef, useState, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 
+import {
+  createApplicantAccount,
+  type RegistrationResult,
+} from './-applicant-accounts-api'
+import {
+  hasRegistrationErrors,
+  passwordRequirements,
+  registrationFields,
+  validateRegistration,
+  type RegistrationField,
+  type RegistrationFieldErrors,
+  type RegistrationValues,
+} from './-registration-validation'
 import { accountAccessHref } from './-return-target'
 import styles from './account-access.module.css'
 
@@ -18,139 +33,297 @@ export interface CreateAccountFormProps {
   returnTo?: string
 }
 
-const passwordGuidance =
-  'Use at least six characters, including one uppercase letter and one special character.'
+const emptyValues: RegistrationValues = {
+  email: '',
+  password: '',
+  confirmPassword: '',
+}
+
+const fieldIds: Record<RegistrationField, string> = {
+  email: 'applicant-email',
+  password: 'applicant-password',
+  confirmPassword: 'applicant-confirm-password',
+}
+
+const errorSummaryTitleId = 'registration-error-summary-title'
+
+export const registrationMessages = {
+  emailTaken:
+    'An account already exists for this email address. Sign in instead, or use a different email address.',
+  networkError:
+    'We could not reach the service. Check your connection and try again.',
+  unexpected:
+    'Something went wrong and your account was not created. Try again later.',
+} as const
+
+export function rateLimitMessage(retryAfterSeconds?: number): string {
+  if (retryAfterSeconds === undefined) {
+    return 'Too many attempts. Wait a few minutes, then try again.'
+  }
+  if (retryAfterSeconds < 60) {
+    const unit = retryAfterSeconds === 1 ? 'second' : 'seconds'
+    return `Too many attempts. Try again in ${retryAfterSeconds} ${unit}.`
+  }
+  const minutes = Math.ceil(retryAfterSeconds / 60)
+  const unit = minutes === 1 ? 'minute' : 'minutes'
+  return `Too many attempts. Try again in ${minutes} ${unit}.`
+}
 
 export function CreateAccountForm({
   onNavigate,
   returnTo,
 }: CreateAccountFormProps) {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState<string>()
-  const [emailError, setEmailError] = useState<string>()
-  const [passwordError, setPasswordError] = useState<string>()
-  const [successMessage, setSuccessMessage] = useState<string>()
+  const [values, setValues] = useState(emptyValues)
+  const [fieldErrors, setFieldErrors] = useState<RegistrationFieldErrors>({})
+  const [formError, setFormError] = useState<string>()
+  const [createdEmail, setCreatedEmail] = useState<string>()
+  const errorSummary = useRef<HTMLElement>(null)
+  const confirmationHeading = useRef<HTMLElement>(null)
   const emailInput = useRef<HTMLInputElement>(null)
   const passwordInput = useRef<HTMLInputElement>(null)
+  const confirmPasswordInput = useRef<HTMLInputElement>(null)
+  const registration = useMutation({ mutationFn: createApplicantAccount })
+  const signInHref = accountAccessHref('/sign-in', returnTo)
 
-  useEffect(() => {
-    if (emailError) {
-      emailInput.current?.focus()
-    } else if (passwordError) {
-      passwordInput.current?.focus()
-    }
-  }, [emailError, passwordError])
-
-  async function submit(): Promise<void> {
-    setError(undefined)
-    setEmailError(undefined)
-    setPasswordError(undefined)
-    setSuccessMessage(undefined)
-
-    try {
-      setPassword('')
-      setSuccessMessage(
-        'Account form is ready. Sign-in is available for this prototype.',
-      )
-    } catch {
-      setError('Account form could not be completed.')
+  function navigateToSignIn(event: { preventDefault: () => void }) {
+    if (onNavigate) {
+      event.preventDefault()
+      onNavigate(signInHref)
     }
   }
 
+  function focusField(field: RegistrationField) {
+    const input = {
+      email: emailInput,
+      password: passwordInput,
+      confirmPassword: confirmPasswordInput,
+    }[field]
+    input.current?.focus()
+  }
+
+  /** Renders the errors synchronously so focus can move to the summary. */
+  function showErrors(errors: RegistrationFieldErrors, message?: string) {
+    flushSync(() => {
+      setFieldErrors(errors)
+      setFormError(message)
+    })
+    errorSummary.current?.focus()
+  }
+
+  function handleResult(result: RegistrationResult, email: string) {
+    switch (result.kind) {
+      case 'created':
+        flushSync(() => {
+          setValues(emptyValues)
+          setFieldErrors({})
+          setFormError(undefined)
+          setCreatedEmail(email)
+        })
+        confirmationHeading.current?.focus()
+        break
+      case 'invalid':
+        showErrors(result.fieldErrors)
+        break
+      case 'email-taken':
+        showErrors({ email: registrationMessages.emailTaken })
+        break
+      case 'rate-limited':
+        showErrors({}, rateLimitMessage(result.retryAfterSeconds))
+        break
+      case 'network-error':
+        showErrors({}, registrationMessages.networkError)
+        break
+      default:
+        showErrors({}, registrationMessages.unexpected)
+    }
+  }
+
+  function submit() {
+    if (registration.isPending) {
+      return
+    }
+    const errors = validateRegistration(values)
+    if (hasRegistrationErrors(errors)) {
+      showErrors(errors)
+      return
+    }
+    const email = values.email.trim()
+    registration.mutate(
+      { email, password: values.password },
+      {
+        onSuccess: (result) => handleResult(result, email),
+        onError: () => showErrors({}, registrationMessages.unexpected),
+      },
+    )
+  }
+
+  function updateField(field: RegistrationField, value: string) {
+    setValues((current) => ({ ...current, [field]: value }))
+    setFieldErrors((current) => ({ ...current, [field]: undefined }))
+  }
+
+  if (createdEmail !== undefined) {
+    return (
+      <AccountAccessPage>
+        <Stack spacing={3}>
+          <Typography
+            component="h1"
+            ref={confirmationHeading}
+            tabIndex={-1}
+            variant="heading"
+          >
+            Account created
+          </Typography>
+          <Alert severity="success">
+            Your account for {createdEmail} is ready. You have not been signed
+            in yet. Sign in to start your KYC application.
+          </Alert>
+          <Typography>
+            <Link href={signInHref} onClick={navigateToSignIn}>
+              Sign in to your account
+            </Link>
+          </Typography>
+        </Stack>
+      </AccountAccessPage>
+    )
+  }
+
+  const summaryFields = registrationFields.filter(
+    (field) => fieldErrors[field] !== undefined,
+  )
+  const hasSummary = formError !== undefined || summaryFields.length > 0
+
+  return (
+    <AccountAccessPage>
+      <Stack
+        aria-labelledby="create-account-title"
+        component="form"
+        className={styles.form}
+        onSubmit={(event) => {
+          event.preventDefault()
+          submit()
+        }}
+        spacing={3}
+      >
+        <Stack spacing={1}>
+          <Typography
+            component="h1"
+            id="create-account-title"
+            variant="heading"
+          >
+            Create your account
+          </Typography>
+          <Typography tone="muted">
+            Create credentials to begin your KYC application.
+          </Typography>
+        </Stack>
+        {hasSummary ? (
+          <Alert
+            aria-labelledby={errorSummaryTitleId}
+            className={styles.errorSummary}
+            ref={errorSummary}
+            severity="error"
+            tabIndex={-1}
+          >
+            <Typography
+              component="h2"
+              id={errorSummaryTitleId}
+              variant="subheading"
+            >
+              There is a problem
+            </Typography>
+            {formError === undefined ? null : (
+              <Typography>{formError}</Typography>
+            )}
+            {summaryFields.length > 0 ? (
+              <ul className={styles.errorList}>
+                {summaryFields.map((field) => (
+                  <li key={field}>
+                    <Link
+                      href={`#${fieldIds[field]}`}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        focusField(field)
+                      }}
+                    >
+                      {fieldErrors[field]}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </Alert>
+        ) : null}
+        <TextField
+          autoComplete="email"
+          error={fieldErrors.email !== undefined}
+          fullWidth
+          helperText={fieldErrors.email}
+          id={fieldIds.email}
+          inputRef={emailInput}
+          label="Email address"
+          name="email"
+          onChange={(event) => updateField('email', event.target.value)}
+          required
+          spellCheck={false}
+          type="email"
+          value={values.email}
+        />
+        <TextField
+          autoComplete="new-password"
+          error={fieldErrors.password !== undefined}
+          fullWidth
+          helperText={fieldErrors.password ?? passwordRequirements}
+          id={fieldIds.password}
+          inputRef={passwordInput}
+          label="Password"
+          name="password"
+          onChange={(event) => updateField('password', event.target.value)}
+          required
+          type="password"
+          value={values.password}
+        />
+        <TextField
+          autoComplete="new-password"
+          error={fieldErrors.confirmPassword !== undefined}
+          fullWidth
+          helperText={fieldErrors.confirmPassword}
+          id={fieldIds.confirmPassword}
+          inputRef={confirmPasswordInput}
+          label="Confirm password"
+          name="confirmPassword"
+          onChange={(event) =>
+            updateField('confirmPassword', event.target.value)
+          }
+          required
+          type="password"
+          value={values.confirmPassword}
+        />
+        <Button
+          className={styles.submit}
+          fullWidth
+          isPending={registration.isPending}
+          size="large"
+          type="submit"
+        >
+          {registration.isPending ? 'Creating account…' : 'Create account'}
+        </Button>
+        <Typography className={styles.footer} align="center" variant="caption">
+          <span>Already have an account? </span>
+          <Link href={signInHref} onClick={navigateToSignIn}>
+            Sign in
+          </Link>
+        </Typography>
+      </Stack>
+    </AccountAccessPage>
+  )
+}
+
+function AccountAccessPage({ children }: { children: ReactNode }) {
   return (
     <main className={styles.page}>
       <Card className={styles.card}>
-        <CardContent className={styles.cardContent}>
-          <Stack
-            component="form"
-            className={styles.form}
-            onSubmit={(event) => {
-              event.preventDefault()
-              void submit()
-            }}
-            spacing={3}
-          >
-            <Stack spacing={1}>
-              <Typography component="h1" variant="heading">
-                Create your account
-              </Typography>
-              <Typography tone="muted">
-                Create credentials to begin your KYC application.
-              </Typography>
-            </Stack>
-            {(error ?? emailError ?? passwordError) ? (
-              <Alert aria-live="assertive" role="alert" severity="error">
-                {error ?? emailError ?? passwordError}
-              </Alert>
-            ) : null}
-            {successMessage ? (
-              <Alert aria-live="polite" role="status" severity="success">
-                {successMessage}
-              </Alert>
-            ) : null}
-            <TextField
-              autoComplete="email"
-              error={Boolean(emailError)}
-              fullWidth
-              helperText={emailError}
-              id="applicant-email"
-              inputRef={emailInput}
-              label="Email address"
-              name="email"
-              onChange={(event) => {
-                setEmail(event.target.value)
-                setEmailError(undefined)
-              }}
-              required
-              type="email"
-              value={email}
-            />
-            <TextField
-              autoComplete="new-password"
-              error={Boolean(passwordError)}
-              fullWidth
-              helperText={passwordError ?? passwordGuidance}
-              id="applicant-password"
-              inputRef={passwordInput}
-              label="Password"
-              name="password"
-              onChange={(event) => {
-                setPassword(event.target.value)
-                setPasswordError(undefined)
-              }}
-              required
-              type="password"
-              value={password}
-            />
-            <Button
-              className={styles.submit}
-              fullWidth
-              size="large"
-              type="submit"
-            >
-              Create account
-            </Button>
-            <Typography
-              className={styles.footer}
-              align="center"
-              variant="caption"
-            >
-              <span>Already have an account? </span>
-              <Link
-                href={accountAccessHref('/sign-in', returnTo)}
-                onClick={(event) => {
-                  if (onNavigate) {
-                    event.preventDefault()
-                    onNavigate(accountAccessHref('/sign-in', returnTo))
-                  }
-                }}
-              >
-                Sign in
-              </Link>
-            </Typography>
-          </Stack>
-        </CardContent>
+        <CardContent className={styles.cardContent}>{children}</CardContent>
       </Card>
     </main>
   )
