@@ -9,6 +9,7 @@ import {
   fieldErrorsByPointer,
   parseRetryAfter,
   postJsonApi,
+  requestJsonApi,
   readJsonApiErrors,
 } from './json-api'
 
@@ -77,6 +78,21 @@ export async function createApplicantSession(
     default:
       return { kind: 'unexpected' }
   }
+}
+
+export type SignOutResult = { kind: 'signed-out' } | { kind: 'failed' }
+
+/**
+ * Revokes the current session and clears its cookie. A 401 means the session
+ * had already ended, which is the outcome the Applicant wanted.
+ */
+export async function deleteApplicantSession(): Promise<SignOutResult> {
+  const response = await requestJsonApi(`${applicantSessionsPath}/current`, {
+    method: 'DELETE',
+  })
+  return response?.status === 204 || response?.status === 401
+    ? { kind: 'signed-out' }
+    : { kind: 'failed' }
 }
 
 /**

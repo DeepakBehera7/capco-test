@@ -1,64 +1,77 @@
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Stack,
-  TextField,
-  Typography,
-} from '@kyc/ui'
-import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Button, Card, CardContent, Stack, Typography } from '@kyc/ui'
+import { data, useNavigate, useRevalidator } from 'react-router'
 
+import { redirectWhenSignedOut, signInHref } from '../-applicant-session'
+import { ApplicationStepForm } from '../-application-step-form'
+import { LoadError } from '../-load-error'
+import {
+  formSteps,
+  getApplicationForm,
+  type FormStep,
+} from '../../../api/applicant-applications'
 import styles from '../../application-step.module.css'
 
 import type { Route } from './+types/$step'
 
-const fields = {
-  'personal-details': [
-    'Name',
-    'Date of birth',
-    'Country',
-    'Nationality',
-    'Email',
-    'Phone',
-  ],
-  'identity-and-address': [
-    'Document type',
-    'Document number',
-    'Document country',
-    'Expiry',
-    'Street',
-    'City',
-    'Postal code',
-    'Residential country',
-  ],
-} as const
+export function meta({ loaderData }: Route.MetaArgs): Route.MetaDescriptors {
+  return [
+    {
+      title:
+        loaderData?.kind === 'review'
+          ? 'Review application | KYC'
+          : 'Your application | KYC',
+    },
+  ]
+}
 
-export default function CurrentApplicationStepPage({
+function isFormStep(step: string): step is FormStep {
+  return (formSteps as readonly string[]).includes(step)
+}
+
+export async function clientLoader({
+  params,
+  request,
+}: Route.ClientLoaderArgs) {
+  if (params.step === 'review') {
+    return { kind: 'review' as const }
+  }
+  if (!isFormStep(params.step)) {
+    throw data(null, { status: 404 })
+  }
+  const result = await getApplicationForm(params.applicationId)
+  if (result.kind === 'ok') {
+    return {
+      kind: 'form' as const,
+      step: params.step,
+      form: result.value,
+      signInHref: signInHref(request),
+    }
+  }
+  redirectWhenSignedOut(result, request)
+  if (result.kind === 'not-found') {
+    throw data(null, { status: 404 })
+  }
+  return { kind: 'error' as const, failure: result }
+}
+
+export default function ApplicationStepPage({
+  loaderData,
   params,
 }: Route.ComponentProps) {
   const navigate = useNavigate()
-  const step =
-    params.step === 'identity-and-address'
-      ? 'identity-and-address'
-      : 'personal-details'
-  const [missing, setMissing] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const advance = () => {
-    const form = document.querySelector('form')
-    if (form && !form.reportValidity()) return
-    setMissing(false)
-    setSaved(true)
-    if (step === 'personal-details')
-      void navigate(
-        `/applications/${params.applicationId}/identity-and-address`,
-      )
-    else void navigate(`/applications/${params.applicationId}/review`)
+  const revalidator = useRevalidator()
+  const applicationPath = `/applications/${params.applicationId}`
+
+  if (loaderData.kind === 'error') {
+    return (
+      <LoadError
+        failure={loaderData.failure}
+        onRetry={() => void revalidator.revalidate()}
+      />
+    )
   }
 
-  if (params.step === 'review') {
+  if (loaderData.kind === 'review') {
     return (
       <main className={styles.reviewPage}>
         <Card className={styles.reviewCard}>
@@ -73,20 +86,14 @@ export default function CurrentApplicationStepPage({
                 and accurate.
               </label>
               <Button
-                onClick={() =>
-                  void navigate(
-                    `/applications/${params.applicationId}/submitted`,
-                  )
-                }
+                onClick={() => void navigate(`${applicationPath}/submitted`)}
               >
                 Submit
               </Button>
               <Button
                 variant="secondary"
                 onClick={() =>
-                  void navigate(
-                    `/applications/${params.applicationId}/identity-and-address`,
-                  )
+                  void navigate(`${applicationPath}/identity-and-address`)
                 }
               >
                 Return to form
@@ -98,87 +105,31 @@ export default function CurrentApplicationStepPage({
     )
   }
 
+  const { step, form } = loaderData
   return (
-    <main className={styles.page}>
-      <Box component="div" className={styles.stepContent}>
-        <Stack spacing={3}>
-          <Typography component="p" variant="eyebrow" tone="accent">
-            STEP {step === 'personal-details' ? '1' : '2'} OF 2
-          </Typography>
-          <Typography component="h1" variant="heading">
-            {step === 'personal-details'
-              ? 'Personal details'
-              : 'Identity and address'}
-          </Typography>
-          <Typography tone="muted">
-            Complete this form as part of the frontend implementation exercise.
-          </Typography>
-          <Stack
-            component="form"
-            className={styles.stepForm}
-            onSubmit={(event) => {
-              event.preventDefault()
-              advance()
-            }}
-            spacing={2}
-          >
-            {fields[step].map((label) => (
-              <TextField key={label} label={`${label} (required)`} required />
-            ))}
-            {step === 'personal-details' ? (
-              <label>
-                <input required type="checkbox" /> I confirm these details are
-                accurate and belong to me.
-              </label>
-            ) : (
-              <>
-                <label htmlFor="document-evidence">
-                  Document evidence (required)
-                </label>
-                <input
-                  id="document-evidence"
-                  type="file"
-                  accept="image/jpeg,image/png"
-                  required
-                />
-              </>
-            )}
-            {missing ? (
-              <Alert role="alert" severity="error">
-                Complete all required fields before continuing.
-              </Alert>
-            ) : null}
-            {saved ? (
-              <Alert role="status" severity="success">
-                Your progress was saved in this prototype.
-              </Alert>
-            ) : null}
-            <Stack
-              component="div"
-              className={styles.formActions}
-              direction="row"
-              spacing={2}
-            >
-              <Button
-                type="button"
-                variant="quiet"
-                onClick={() =>
-                  step === 'personal-details'
-                    ? void navigate('/applications/current')
-                    : void navigate(
-                        `/applications/${params.applicationId}/personal-details`,
-                      )
-                }
-              >
-                Back
-              </Button>
-              <Button type="submit">
-                {step === 'personal-details' ? 'Continue' : 'Save and review'}
-              </Button>
-            </Stack>
-          </Stack>
-        </Stack>
-      </Box>
-    </main>
+    <ApplicationStepForm
+      applicationId={params.applicationId}
+      form={form}
+      // A new saved version (for example after a conflict reload) resets the
+      // form to what the API has stored.
+      key={`${step}-${form.version}`}
+      onBack={() =>
+        void navigate(
+          step === 'personal-details'
+            ? '/applications/current'
+            : `${applicationPath}/personal-details`,
+        )
+      }
+      onContinue={() =>
+        void navigate(
+          step === 'personal-details'
+            ? `${applicationPath}/identity-and-address`
+            : `${applicationPath}/review`,
+        )
+      }
+      onReload={() => void revalidator.revalidate()}
+      signInHref={loaderData.signInHref}
+      step={step}
+    />
   )
 }
