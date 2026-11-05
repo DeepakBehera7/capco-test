@@ -1,25 +1,32 @@
-import { Button, Link, Stack, TextField, Typography } from '@kyc/ui'
+import {
+  Button,
+  ErrorSummary,
+  Link,
+  Stack,
+  TextField,
+  Typography,
+} from '@kyc/ui'
 import { useMutation } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 
 import {
-  AccountAccessPage,
-  accountAccessMessages,
-  ErrorSummary,
-  rateLimitMessage,
-} from './-account-access-ui'
-import {
   createApplicantSession,
   type SignInResult,
-} from './-applicant-sessions-api'
+} from '../api/applicant-sessions'
+
+import {
+  AccountAccessPage,
+  accountAccessMessages,
+  rateLimitMessage,
+} from './-account-access-ui'
 import { accountAccessHref } from './-return-target'
 import styles from './account-access.module.css'
 
 import type {
   ApplicantCredentials,
   CredentialField,
-} from './-applicant-accounts-api'
+} from '../api/applicant-accounts'
 
 export interface SignInFormProps {
   onNavigate?: (href: string) => void

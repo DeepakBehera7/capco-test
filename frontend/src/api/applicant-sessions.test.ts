@@ -6,8 +6,8 @@ import { server } from '../test/server'
 import {
   applicantSessionsPath,
   createApplicantSession,
-} from './-applicant-sessions-api'
-import { jsonApiMediaType } from './-json-api'
+} from './applicant-sessions'
+import { jsonApiMediaType } from './json-api'
 
 const credentials = { email: 'ada@example.com', password: 'Secret!' }
 

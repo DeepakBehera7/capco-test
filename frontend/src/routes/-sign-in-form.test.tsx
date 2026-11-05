@@ -5,10 +5,10 @@ import { axe, toHaveNoViolations } from 'jest-axe'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 
+import { applicantSessionsPath } from '../api/applicant-sessions'
 import { server } from '../test/server'
 
 import { rateLimitMessage } from './-account-access-ui'
-import { applicantSessionsPath } from './-applicant-sessions-api'
 import { SignInForm, signInMessages } from './-sign-in-form'
 
 expect.extend(toHaveNoViolations)

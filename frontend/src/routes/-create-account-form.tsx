@@ -1,18 +1,26 @@
-import { Alert, Button, Link, Stack, TextField, Typography } from '@kyc/ui'
+import {
+  Alert,
+  Button,
+  ErrorSummary,
+  Link,
+  Stack,
+  TextField,
+  Typography,
+} from '@kyc/ui'
 import { useMutation } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 
 import {
-  AccountAccessPage,
-  accountAccessMessages,
-  ErrorSummary,
-  rateLimitMessage,
-} from './-account-access-ui'
-import {
   createApplicantAccount,
   type RegistrationResult,
-} from './-applicant-accounts-api'
+} from '../api/applicant-accounts'
+
+import {
+  AccountAccessPage,
+  accountAccessMessages,
+  rateLimitMessage,
+} from './-account-access-ui'
 import {
   hasRegistrationErrors,
   passwordRequirements,

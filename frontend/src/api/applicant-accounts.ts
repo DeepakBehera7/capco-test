@@ -3,7 +3,7 @@ import {
   parseRetryAfter,
   postJsonApi,
   readJsonApiErrors,
-} from './-json-api'
+} from './json-api'
 
 export const applicantAccountsPath = '/api/v1/applicant-accounts'
 

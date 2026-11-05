@@ -1,15 +1,16 @@
+import { isSafeJourneyPath } from '../routes/-return-target'
+
 import {
   credentialPointers,
   type ApplicantCredentials,
   type CredentialField,
-} from './-applicant-accounts-api'
+} from './applicant-accounts'
 import {
   fieldErrorsByPointer,
   parseRetryAfter,
   postJsonApi,
   readJsonApiErrors,
-} from './-json-api'
-import { isSafeJourneyPath } from './-return-target'
+} from './json-api'
 
 export const applicantSessionsPath = '/api/v1/applicant-sessions'
 
