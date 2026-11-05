@@ -1,7 +1,7 @@
 /**
- * JSON:API transport helpers shared by the account access endpoints. They
- * keep media type, error document parsing and header handling in one place so
- * each endpoint module only maps HTTP outcomes to its own result type.
+ * JSON:API transport helpers shared by every endpoint module. They keep media
+ * type, CSRF and error document handling in one place so each endpoint module
+ * only maps HTTP outcomes to its own result type.
  */
 export const jsonApiMediaType = 'application/vnd.api+json'
 
@@ -12,28 +12,87 @@ export interface JsonApiError {
   source?: { pointer: string }
 }
 
+export interface JsonApiRequest {
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+  /** JSON:API document sent as the request body. */
+  document?: unknown
+  /** Multipart body, for file uploads. Takes precedence over `document`. */
+  formData?: FormData
+}
+
 /**
- * Posts a JSON:API document. Resolves to `undefined` when the request never
- * reached the server (offline, DNS, CORS), so callers can report a network
- * failure without inspecting thrown errors.
+ * Sends a request with the JSON:API headers and the session cookie. State
+ * changing requests also carry the CSRF token the API issued at sign-in.
+ * Resolves to `undefined` when the request never reached the server (offline,
+ * DNS, CORS), so callers can report a network failure without inspecting
+ * thrown errors.
  */
-export async function postJsonApi(
+export async function requestJsonApi(
   path: string,
-  document: unknown,
+  { method = 'GET', document: jsonDocument, formData }: JsonApiRequest = {},
 ): Promise<Response | undefined> {
+  const headers: Record<string, string> = { Accept: jsonApiMediaType }
+  let body: BodyInit | undefined
+  if (formData !== undefined) {
+    // The browser sets the multipart Content-Type with its boundary.
+    body = formData
+  } else if (jsonDocument !== undefined) {
+    headers['Content-Type'] = jsonApiMediaType
+    body = JSON.stringify(jsonDocument)
+  }
+  const csrfToken = method === 'GET' ? undefined : readCsrfToken()
+  if (csrfToken !== undefined) {
+    headers['X-XSRF-TOKEN'] = csrfToken
+  }
   try {
     return await fetch(path, {
-      method: 'POST',
+      method,
       credentials: 'same-origin',
-      headers: {
-        Accept: jsonApiMediaType,
-        'Content-Type': jsonApiMediaType,
-      },
-      body: JSON.stringify(document),
+      headers,
+      body,
     })
   } catch {
     return undefined
   }
+}
+
+/** Posts a JSON:API document; see {@link requestJsonApi}. */
+export function postJsonApi(
+  path: string,
+  document: unknown,
+): Promise<Response | undefined> {
+  return requestJsonApi(path, { method: 'POST', document })
+}
+
+/** Reads the JSON body of a response, or `undefined` when it is not JSON. */
+export async function readJson(response: Response): Promise<unknown> {
+  try {
+    return (await response.json()) as unknown
+  } catch {
+    return undefined
+  }
+}
+
+/** First error `detail` of an error document, when the API sent one. */
+export async function readFirstErrorDetail(
+  response: Response,
+): Promise<string | undefined> {
+  const [first] = await readJsonApiErrors(response)
+  return first?.detail
+}
+
+/** The API sets XSRF-TOKEN as a readable cookie when the Applicant signs in. */
+function readCsrfToken(): string | undefined {
+  if (typeof document === 'undefined') {
+    return undefined
+  }
+  for (const cookie of document.cookie.split(';')) {
+    const [name, ...value] = cookie.trim().split('=')
+    if (name === 'XSRF-TOKEN') {
+      return decodeURIComponent(value.join('='))
+    }
+  }
+  return undefined
 }
 
 /** Reads the `errors` array of an error document, ignoring malformed items. */
