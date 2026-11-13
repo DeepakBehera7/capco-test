@@ -21,7 +21,14 @@
 }
 .formActions.formActions {
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
+}
+.primaryActions.primaryActions {
+  flex-wrap: wrap;
+}
+.fieldError {
+  color: #b42318;
 }
 
 @media (min-width: 768px) {

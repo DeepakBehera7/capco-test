@@ -1,0 +1,10 @@
+.header {
+  background: #ffffff;
+  border-bottom: 1px solid #dfe3e8;
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 16px;
+}
+.alert {
+  margin: 16px;
+}

@@ -5,14 +5,11 @@ import { axe, toHaveNoViolations } from 'jest-axe'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 
+import { applicantAccountsPath } from '../api/applicant-accounts'
 import { server } from '../test/server'
 
-import { applicantAccountsPath } from './-applicant-accounts-api'
-import {
-  CreateAccountForm,
-  rateLimitMessage,
-  registrationMessages,
-} from './-create-account-form'
+import { rateLimitMessage } from './-account-access-ui'
+import { CreateAccountForm, registrationMessages } from './-create-account-form'
 
 expect.extend(toHaveNoViolations)
 
@@ -262,17 +259,5 @@ describe('CreateAccountForm', () => {
 
     await screen.findByRole('heading', { name: 'Account created' })
     expect(requests).toHaveLength(1)
-  })
-})
-
-describe('rateLimitMessage', () => {
-  it.each([
-    [undefined, 'Too many attempts. Wait a few minutes, then try again.'],
-    [1, 'Too many attempts. Try again in 1 second.'],
-    [45, 'Too many attempts. Try again in 45 seconds.'],
-    [60, 'Too many attempts. Try again in 1 minute.'],
-    [61, 'Too many attempts. Try again in 2 minutes.'],
-  ])('formats %s seconds', (seconds, message) => {
-    expect(rateLimitMessage(seconds)).toBe(message)
   })
 })
