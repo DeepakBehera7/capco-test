@@ -5,6 +5,10 @@ import { parseAccountAccessSearch } from './-return-target'
 
 import type { Route } from './+types/create-account'
 
+export function meta(): Route.MetaDescriptors {
+  return [{ title: 'Create account | KYC' }]
+}
+
 export function clientLoader({ request }: Route.ClientLoaderArgs) {
   const search = Object.fromEntries(new URL(request.url).searchParams)
   return parseAccountAccessSearch(search)
